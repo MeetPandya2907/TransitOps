@@ -52,7 +52,7 @@ export default function DriversPage() {
     setCurrentDriver({
       name: '',
       license_number: '',
-      license_category: 'Class A CDL',
+      license_category: 'CDL-A',
       license_expiry_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       contact_number: '',
       safety_score: 100,
@@ -323,7 +323,7 @@ export default function DriversPage() {
           </div>
 
           {/* Table view for desktop */}
-          <div className="hidden md:block glass-panel rounded-2xl shadow-sm overflow-hidden border border-slate-200/60 dark:border-slate-800/40">
+          <div className="hidden md:block glass-panel rounded-2xl shadow-sm overflow-x-auto border border-slate-200/60 dark:border-slate-800/40">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800/80">
               <thead className="bg-slate-50/70 dark:bg-slate-900/30">
                 <tr>
@@ -391,7 +391,7 @@ export default function DriversPage() {
       {isModalOpen && currentDriver && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="glass-panel w-full max-w-lg rounded-2xl shadow-2xl p-6 relative z-10 border border-white/20">
+          <div className="glass-panel w-full max-w-lg rounded-2xl shadow-2xl p-6 relative z-10 border border-slate-200 dark:border-white/20 bg-white dark:bg-[#151b2b]">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 {currentDriver.id ? 'Modify Driver Record' : 'Register New Driver'}
@@ -411,7 +411,7 @@ export default function DriversPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Name */}
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Driver Full Name</label>
@@ -442,14 +442,14 @@ export default function DriversPage() {
                 <div>
                   <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">License Class</label>
                   <select
-                    value={currentDriver.license_category || 'Class A CDL'}
+                    value={currentDriver.license_category || 'CDL-A'}
                     onChange={(e) => setCurrentDriver({ ...currentDriver, license_category: e.target.value })}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   >
-                    <option value="Class A CDL">Class A CDL (Heavy Combinations)</option>
-                    <option value="Class B CDL">Class B CDL (Heavy Single Vehicles)</option>
-                    <option value="Class C CDL">Class C CDL (Light/Hazmat)</option>
-                    <option value="Standard Class D">Standard Class D (Passenger Cars)</option>
+                    <option value="CDL-A">CDL-A (Heavy Combinations)</option>
+                    <option value="CDL-B">CDL-B (Heavy Single Vehicles)</option>
+                    <option value="CDL-C">CDL-C (Light/Hazmat)</option>
+                    <option value="Class D">Class D (Standard Passenger)</option>
                   </select>
                 </div>
 

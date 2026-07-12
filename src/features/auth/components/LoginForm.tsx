@@ -150,7 +150,7 @@ function OtpInput({ value, onChange }: { value: string[]; onChange: (v: string[]
 }
 
 // ─── OTP Verification Screen ──────────────────────────────────────────────────
-function OtpScreen({ email, onBack }: { email: string; onBack: () => void }) {
+function OtpScreen({ email, onBack, authType = 'signup' }: { email: string; onBack: () => void; authType?: 'signup' | 'email' }) {
   const navigate = useNavigate()
   const [otp, setOtp] = useState(Array(6).fill(''))
   const [error, setError] = useState<string | null>(null)
@@ -169,7 +169,7 @@ function OtpScreen({ email, onBack }: { email: string; onBack: () => void }) {
       const { error } = await supabase.auth.verifyOtp({
         email,
         token: code,
-        type: 'signup',
+        type: authType,
       })
       if (error) throw error
       navigate('/dashboard')
@@ -192,7 +192,7 @@ function OtpScreen({ email, onBack }: { email: string; onBack: () => void }) {
         if (code.length === 6) {
           setIsVerifying(true)
           setError(null)
-          supabase.auth.verifyOtp({ email, token: code, type: 'signup' })
+          supabase.auth.verifyOtp({ email, token: code, type: authType })
             .then(({ error }) => {
               if (error) throw error
               navigate('/dashboard')
@@ -213,7 +213,7 @@ function OtpScreen({ email, onBack }: { email: string; onBack: () => void }) {
     setIsResending(true)
     setError(null)
     try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email })
+      const { error } = await supabase.auth.resend({ type: authType, email })
       if (error) throw error
       // Start 60-second cooldown
       setResendCooldown(60)
@@ -294,8 +294,59 @@ function OtpScreen({ email, onBack }: { email: string; onBack: () => void }) {
   )
 }
 
+// ─── Forgot Password Section (OTP Login) ──────────────────────────────────────
+function ForgotPasswordSection({ onSwitch, onOtpSent }: { onSwitch: () => void; onOtpSent: (email: string, type: 'email') => void }) {
+  const [email, setEmail] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email) return setError('Email is required')
+    setIsLoading(true)
+    setError(null)
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ email })
+      if (error) throw error
+      onOtpSent(email, 'email')
+    } catch (err: any) {
+      setError(err.message || 'Failed to send OTP code.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <motion.div key="forgot" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.25 }}>
+      <div className="mb-7">
+        <h2 className="text-2xl font-bold text-white">Sign In with OTP</h2>
+        <p className="text-slate-400 text-sm mt-1">We'll send a 6-digit code to your email.</p>
+      </div>
+
+      {error && <ErrorAlert message={error} />}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Email Address</label>
+          <AuthInput value={email} onChange={(e: any) => setEmail(e.target.value)} icon={Mail} type="email" placeholder="you@company.com" />
+        </div>
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold py-3 rounded-xl shadow-lg shadow-indigo-500/20 transition-all active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none mt-2"
+        >
+          {isLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending...</> : <>Send Code <ArrowRight className="w-4 h-4" /></>}
+        </button>
+      </form>
+      <div className="mt-6 text-center">
+        <button onClick={onSwitch} className="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">Back to Sign In</button>
+      </div>
+    </motion.div>
+  )
+}
+
 // ─── Login Section ────────────────────────────────────────────────────────────
-function LoginSection({ onSwitch }: { onSwitch: () => void }) {
+function LoginSection({ onSwitch }: { onSwitch: (mode: 'signup' | 'forgot_password') => void }) {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
@@ -340,7 +391,10 @@ function LoginSection({ onSwitch }: { onSwitch: () => void }) {
           <AuthInput {...register('email')} icon={Mail} type="email" placeholder="you@company.com" error={errors.email?.message} />
         </div>
         <div>
-          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1 mb-1.5 block">Password</label>
+          <div className="flex items-center justify-between ml-1 mb-1.5">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">Password</label>
+            <button type="button" onClick={() => onSwitch('forgot_password')} className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">Forgot password?</button>
+          </div>
           <AuthInput
             {...register('password')}
             icon={Lock}
@@ -364,7 +418,7 @@ function LoginSection({ onSwitch }: { onSwitch: () => void }) {
       </form>
       <div className="mt-6 text-center">
         <span className="text-sm text-slate-500">New to TransitOps? </span>
-        <button onClick={onSwitch} className="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">Create account</button>
+        <button onClick={() => onSwitch('signup')} className="text-sm font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">Create account</button>
       </div>
     </motion.div>
   )
@@ -482,26 +536,32 @@ function SignupSection({ onSwitch, onOtpSent }: { onSwitch: () => void; onOtpSen
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
 export function LoginForm() {
-  const [mode, setMode] = useState<'login' | 'signup' | 'otp'>('login')
+  const [mode, setMode] = useState<'login' | 'signup' | 'otp' | 'forgot_password'>('login')
   const [otpEmail, setOtpEmail] = useState('')
+  const [authType, setAuthType] = useState<'signup' | 'email'>('signup')
 
-  const handleOtpSent = (email: string) => {
+  const handleOtpSent = (email: string, type: 'signup' | 'email' = 'signup') => {
     setOtpEmail(email)
+    setAuthType(type)
     setMode('otp')
   }
 
   return (
-    <div className="min-h-screen w-full flex bg-[#030a1a] text-slate-50 overflow-hidden font-sans">
+    <div className="min-h-screen w-full flex bg-[#030a1a] text-slate-50 overflow-hidden font-sans relative">
+      <div className="absolute inset-0 z-0">
+         <img src="/auth-bg.png" alt="Background" className="w-full h-full object-cover opacity-50 mix-blend-screen pointer-events-none" />
+      </div>
+      
       {/* Ambient glows */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute w-[700px] h-[700px] bg-indigo-600/15 rounded-full blur-[140px] -top-48 -left-48" />
         <div className="absolute w-[500px] h-[500px] bg-violet-600/15 rounded-full blur-[120px] bottom-0 right-0" />
         <div className="absolute w-[300px] h-[300px] bg-blue-600/10 rounded-full blur-[80px] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
       </div>
 
-      <div className="relative z-10 w-full flex">
+      <div className="relative z-10 w-full flex bg-black/10 backdrop-blur-sm">
         {/* Left branding panel */}
-        <div className="hidden lg:flex w-1/2 p-14 flex-col justify-between border-r border-white/[0.07]">
+        <div className="hidden lg:flex w-1/2 p-14 flex-col justify-between border-r border-white/[0.07] bg-black/30 backdrop-blur-xl">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
               <span className="text-white font-black text-lg">T</span>
@@ -536,10 +596,10 @@ export function LoginForm() {
 
         {/* Right form panel */}
         <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 overflow-y-auto">
-          <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }} className="w-full max-w-md">
+          <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }} className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
 
             {/* Tab switcher — hidden during OTP */}
-            {mode !== 'otp' && (
+            {mode !== 'otp' && mode !== 'forgot_password' && (
               <div className="flex bg-white/[0.05] border border-white/[0.08] rounded-2xl p-1 mb-8">
                 {(['login', 'signup'] as const).map(m => (
                   <button
@@ -559,13 +619,16 @@ export function LoginForm() {
             {/* Animated form content */}
             <AnimatePresence mode="wait">
               {mode === 'login' && (
-                <LoginSection key="login" onSwitch={() => setMode('signup')} />
+                <LoginSection key="login" onSwitch={(m) => setMode(m)} />
               )}
               {mode === 'signup' && (
                 <SignupSection key="signup" onSwitch={() => setMode('login')} onOtpSent={handleOtpSent} />
               )}
+              {mode === 'forgot_password' && (
+                <ForgotPasswordSection key="forgot" onSwitch={() => setMode('login')} onOtpSent={handleOtpSent} />
+              )}
               {mode === 'otp' && (
-                <OtpScreen key="otp" email={otpEmail} onBack={() => setMode('signup')} />
+                <OtpScreen key="otp" email={otpEmail} authType={authType} onBack={() => setMode('login')} />
               )}
             </AnimatePresence>
 

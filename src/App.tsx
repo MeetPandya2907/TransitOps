@@ -14,39 +14,10 @@ import MaintenancePage from '@/features/maintenance/MaintenancePage'
 import VehiclesPage from '@/features/vehicles/VehiclesPage'
 import FuelPage from '@/features/fuel/FuelPage'
 import DriversPage from '@/features/drivers/DriversPage'
+import TripsPage from '@/features/trips/TripsPage'
+import ReportsPage from '@/features/reports/ReportsPage'
 
 // ─── Removed Inline Dashboard ──────────────────────────────────────────────────
-
-// ─── Trips Page ───────────────────────────────────────────────────────────────
-function TripsPage() {
-  const [isCreateOpen, setIsCreateOpen] = useState(false)
-  const { profile } = useAuthStore()
-  const isFleetManager = profile?.roles?.includes('FleetManager')
-
-  return (
-    <div className="flex flex-col h-full space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Trip Management</h1>
-          <p className="text-slate-500 text-sm mt-1">Drag cards to update trip status.</p>
-        </div>
-        {isFleetManager && (
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            New Trip
-          </button>
-        )}
-      </div>
-      <div className="flex-1 overflow-hidden">
-        <TripBoard />
-      </div>
-      <CreateTripModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
-    </div>
-  )
-}
 
 // ─── Placeholder Pages ────────────────────────────────────────────────────────
 function PlaceholderPage({ title, member }: { title: string; member: string }) {
@@ -95,11 +66,22 @@ function App() {
             <Route path="/trips" element={<TripsPage />} />
           </Route>
 
-          {/* These are Member 3 & 4 pages */}
-          <Route path="/fleet" element={<VehiclesPage />} />
-          <Route path="/drivers" element={<DriversPage />} />
-          <Route path="/maintenance" element={<MaintenancePage />} />
-          <Route path="/expenses" element={<FuelPage />} />
+          {/* FleetManager only pages */}
+          <Route element={<ProtectedRoute allowedRoles={['FleetManager']} />}>
+            <Route path="/fleet" element={<VehiclesPage />} />
+            <Route path="/drivers" element={<DriversPage />} />
+          </Route>
+
+          {/* Maintenance accessible by Manager and Safety Officer */}
+          <Route element={<ProtectedRoute allowedRoles={['FleetManager', 'SafetyOfficer']} />}>
+            <Route path="/maintenance" element={<MaintenancePage />} />
+          </Route>
+
+          {/* Expenses & Reports accessible by Manager and Financial Analyst */}
+          <Route element={<ProtectedRoute allowedRoles={['FleetManager', 'FinancialAnalyst']} />}>
+            <Route path="/expenses" element={<FuelPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+          </Route>
         </Route>
       </Route>
     </Routes>

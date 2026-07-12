@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { Plus, CheckCircle, XCircle, Play, Navigation, ArrowRight, X } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 type Trip = any;
 type Vehicle = any;
@@ -13,7 +15,11 @@ export default function TripsPage() {
   const role = profile?.roles?.[0] || 'Driver';
   const isDriver = role === 'Driver';
   const isManager = role === 'FleetManager';
-  const canModify = isManager || isDriver;
+  
+  const canPlanTrip = isManager;
+  const canDispatch = isManager;
+  const canCancel = isManager;
+  const canCompleteTrip = (trip: Trip) => isManager || (isDriver && trip.drivers?.user_id === profile?.id);
 
   const [trips, setTrips] = useState<Trip[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -295,9 +301,6 @@ export default function TripsPage() {
     
     setLoading(true);
     try {
-      // If trip was already dispatched, we need to release driver and vehicle
-      if (trip.status === 'Dispatched') {
-    try {
       // The DB trigger handle_trip_status_change will update vehicles and drivers automatically
       // Update trip to cancelled
       const { error: tError } = await supabase
@@ -335,7 +338,6 @@ export default function TripsPage() {
       'completed': 'Completed',
       'cancelled': 'Cancelled',
     };
-    };
     return map[status] || status;
   };
 
@@ -355,6 +357,30 @@ export default function TripsPage() {
     document.body.removeChild(link);
   };
 
+  const exportToPDF = () => {
+    if (!trips || trips.length === 0) return;
+    const doc = new jsPDF();
+    doc.text("Trips Operations", 14, 15);
+    
+    const tableData = trips.map((t: any) => [
+      t.id.substring(0, 8),
+      `${t.source} to ${t.destination}`,
+      t.vehicles?.name_model || 'N/A',
+      t.drivers?.name || 'N/A',
+      t.status,
+      t.planned_distance,
+      `$${t.revenue}`
+    ]);
+
+    autoTable(doc, {
+      head: [['ID', 'Route', 'Vehicle', 'Driver', 'Status', 'Dist (km)', 'Rev ($)']],
+      body: tableData,
+      startY: 25,
+    });
+    
+    doc.save('trips.pdf');
+  };
+
   // Helper to find available vehicles for select form
   const availableVehiclesForForm = vehicles.filter(v => v.status === 'available');
   // Helper to find available drivers for select form
@@ -367,19 +393,25 @@ export default function TripsPage() {
     <div className="space-y-6">
       
       {/* Top action header */}
-      <div className="glass-panel rounded-2xl p-5 shadow-sm flex items-center justify-between">
+      <div className="glass-panel rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center gap-4 justify-between">
         <div>
           <h4 className="text-sm font-semibold text-slate-500">Fleet Operations</h4>
           <p className="text-xs text-slate-400 mt-0.5">Draft, dispatch, and close operational deliveries.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={exportToCSV}
             className="flex items-center justify-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-900 transition-all"
           >
             Export CSV
           </button>
-          {canModify && (
+          <button
+            onClick={exportToPDF}
+            className="flex items-center justify-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-900 transition-all"
+          >
+            Export PDF
+          </button>
+          {canPlanTrip && (
             <button
               onClick={handleOpenAddModal}
               className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-brand-500/10 transition-all hover:scale-[1.02]"
@@ -425,23 +457,23 @@ export default function TripsPage() {
               {/* Assignments / Metrics Grid */}
               <div className="grid grid-cols-2 gap-4 text-xs border-y border-slate-100 dark:border-slate-800/60 py-3.5">
                 <div>
-                  <span className="text-slate-400 font-medium block">Vehicle Assigned:</span>
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">{t.vehicles?.name_model || 'Unassigned'}</span>
-                  <span className="text-xxs text-slate-400 block font-mono">Reg: {t.vehicles?.registration_number}</span>
+                  <span className="text-slate-500 dark:text-slate-400 font-medium block">Vehicle Assigned:</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-300">{t.vehicles?.name_model || 'Unassigned'}</span>
+                  <span className="text-xxs text-slate-500 dark:text-slate-400 block font-mono">Reg: {t.vehicles?.registration_number}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium block">Driver Assigned:</span>
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">{t.drivers?.name || 'Unassigned'}</span>
-                  <span className="text-xxs text-slate-400 block">Lic: {t.drivers?.license_number}</span>
+                  <span className="text-slate-500 dark:text-slate-400 font-medium block">Driver Assigned:</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-300">{t.drivers?.name || 'Unassigned'}</span>
+                  <span className="text-xxs text-slate-500 dark:text-slate-400 block">Lic: {t.drivers?.license_number}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium block">Cargo Load:</span>
-                  <span className="font-bold text-slate-750 dark:text-slate-300">{t.cargo_weight} kg</span>
-                  <span className="text-xxs text-slate-400 block">Max Limit: {t.vehicles?.max_load_capacity} kg</span>
+                  <span className="text-slate-500 dark:text-slate-400 font-medium block">Cargo Load:</span>
+                  <span className="font-bold text-slate-900 dark:text-slate-300">{t.cargo_weight} kg</span>
+                  <span className="text-xxs text-slate-500 dark:text-slate-400 block">Max Limit: {t.vehicles?.max_load_capacity} kg</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-medium block">Est Distance & Rev:</span>
-                  <span className="font-semibold text-slate-750 dark:text-slate-300">{t.planned_distance} km</span>
+                  <span className="text-slate-500 dark:text-slate-400 font-medium block">Est Distance & Rev:</span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-300">{t.planned_distance} km</span>
                   <span className="text-xxs text-brand-600 dark:text-brand-400 block font-bold">Planned Revenue: ${t.revenue}</span>
                 </div>
               </div>
@@ -465,25 +497,40 @@ export default function TripsPage() {
               )}
 
               {/* Operational Action Buttons */}
-              {canModify && t.status !== 'completed' && t.status !== 'cancelled' && (
+              {(canCancel || canDispatch || canCompleteTrip(t)) && t.status !== 'completed' && t.status !== 'cancelled' && (
                 <div className="flex justify-end gap-2.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/40">
-                  <button
-                    onClick={() => handleCancelTrip(t)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 dark:border-red-950/30 text-red-650 dark:text-red-400 rounded-lg text-xs font-semibold hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
-                  >
-                    <XCircle className="h-3.5 w-3.5" /> Cancel Trip
-                  </button>
-
-                  {t.status === 'draft' && (
+                  {canCancel && (
                     <button
-                      onClick={() => handleDispatchTrip(t)}
-                      className="flex items-center gap-1.5 px-4.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-500/10 transition-colors"
+                      onClick={() => handleCancelTrip(t)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 dark:border-red-950/30 text-red-650 dark:text-red-400 rounded-lg text-xs font-semibold hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
                     >
-                      <Play className="h-3.5 w-3.5" /> Dispatch
+                      <XCircle className="h-3.5 w-3.5" /> Cancel Trip
                     </button>
                   )}
 
-                  {t.status === 'dispatched' && (
+                  {canDispatch && t.status === 'draft' && (() => {
+                    const isUnavailable = t.vehicles?.status !== 'available' || t.drivers?.status !== 'available';
+                    return (
+                      <div className="flex items-center gap-2">
+                        {isUnavailable && (
+                          <span className="text-xxs text-amber-500 font-medium" title="Vehicle or Driver is currently assigned to another active trip or unavailable.">⚠️ Unavailable</span>
+                        )}
+                        <button
+                          onClick={() => handleDispatchTrip(t)}
+                          disabled={isUnavailable}
+                          className={`flex items-center gap-1.5 px-4.5 py-1.5 rounded-lg text-xs font-semibold shadow-md transition-colors ${
+                            isUnavailable 
+                              ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 cursor-not-allowed'
+                              : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/10'
+                          }`}
+                        >
+                          <Play className="h-3.5 w-3.5" /> Dispatch
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  {canCompleteTrip(t) && t.status === 'dispatched' && (
                     <button
                       onClick={() => handleOpenCompleteModal(t)}
                       className="flex items-center gap-1.5 px-4.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-md shadow-emerald-500/10 transition-colors"
@@ -502,11 +549,11 @@ export default function TripsPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="glass-panel w-full max-w-lg rounded-2xl shadow-2xl p-6 relative z-10 border border-white/20">
+          <div className="glass-panel w-full max-w-lg rounded-2xl shadow-2xl p-6 relative z-10 border border-slate-200 dark:border-white/20 bg-white dark:bg-[#151b2b]">
             
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">Create New Trip Route & Dispatch</h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400"><X className="h-4 w-4" /></button>
+              <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"><X className="h-4 w-4" /></button>
             </div>
 
             <form onSubmit={handleSaveTrip} className="mt-4 space-y-4">
@@ -516,7 +563,7 @@ export default function TripsPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Source */}
                 <div>
                   <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Source Depot</label>
@@ -646,7 +693,7 @@ export default function TripsPage() {
       {isCompleteModalOpen && activeTripToComplete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsCompleteModalOpen(false)}></div>
-          <div className="glass-panel w-full max-w-lg rounded-2xl shadow-2xl p-6 relative z-10 border border-white/20">
+          <div className="glass-panel w-full max-w-lg rounded-2xl shadow-2xl p-6 relative z-10 border border-slate-200 dark:border-white/20 bg-white dark:bg-[#151b2b]">
             
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <div className="flex flex-col">
@@ -668,7 +715,7 @@ export default function TripsPage() {
                 <p><strong>Planned Route Distance:</strong> {activeTripToComplete.planned_distance} km</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Ending Odometer */}
                 <div className="col-span-2">
                   <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Ending Odometer Value (km)</label>

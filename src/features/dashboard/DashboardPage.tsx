@@ -37,9 +37,21 @@ export default function DashboardPage() {
           supabase.from('drivers').select('*')
         ]);
 
-        const vehicles = vehiclesRes.data || [];
+        let vehicles = vehiclesRes.data || [];
         const trips = tripsRes.data || [];
         const drivers = driversRes.data || [];
+
+        // Apply Filters
+        if (typeFilter !== 'All' && typeFilter !== 'Vehicle Type: All') {
+          vehicles = vehicles.filter(v => v.type === typeFilter);
+        }
+        if (statusFilter !== 'All' && statusFilter !== 'Status: All') {
+          const dbStatus = statusFilter.toLowerCase().replace(' ', '_');
+          vehicles = vehicles.filter(v => v.status === dbStatus);
+        }
+        if (regionFilter !== 'All' && regionFilter !== 'Region: All') {
+          vehicles = vehicles.filter(v => v.region === regionFilter);
+        }
 
         // Calculate Vehicle Stats
         const vStats = { available: 0, onTrip: 0, inShop: 0, retired: 0, total: vehicles.length };
@@ -113,7 +125,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Row - Excalidraw Style */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         <KpiCard label="Active Vehicles" value={metrics.activeVehicles} accent="border-l-emerald-500" />
         <KpiCard label="Available Vehicles" value={metrics.availableVehicles} accent="border-l-blue-500" />
         <KpiCard label="Vehicles In Maintenance" value={metrics.vehiclesInMaintenance} accent="border-l-amber-500" />
@@ -127,13 +139,13 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Recent Trips Table (2/3 width) */}
-        <div className="lg:col-span-2 bg-[#151b2b] border border-white/5 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-white/5">
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-widest">Recent Trips</h2>
+        <div className="lg:col-span-2 bg-white dark:bg-[#151b2b] border border-slate-200 dark:border-white/5 rounded-xl overflow-hidden shadow-sm">
+          <div className="p-4 border-b border-slate-200 dark:border-white/5">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Recent Trips</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="text-xs uppercase text-slate-500 bg-white/[0.02]">
+              <thead className="text-xs uppercase text-slate-500 bg-slate-50 dark:bg-white/[0.02]">
                 <tr>
                   <th className="px-4 py-3 font-medium">Trip</th>
                   <th className="px-4 py-3 font-medium">Vehicle</th>
@@ -142,10 +154,10 @@ export default function DashboardPage() {
                   <th className="px-4 py-3 font-medium">Distance</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-white/5">
+              <tbody className="divide-y divide-slate-100 dark:divide-white/5">
                 {recentTrips.map(trip => (
-                  <tr key={trip.id} className="hover:bg-white/[0.02]">
-                    <td className="px-4 py-3 text-slate-300 font-medium">TRP-{trip.id.substring(0,6).toUpperCase()}</td>
+                  <tr key={trip.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.02]">
+                    <td className="px-4 py-3 text-slate-900 dark:text-slate-300 font-medium">TRP-{trip.id.substring(0,6).toUpperCase()}</td>
                     <td className="px-4 py-3 text-slate-400">{trip.vehicles?.registration_number || '—'}</td>
                     <td className="px-4 py-3 text-slate-400">{trip.drivers?.name || '—'}</td>
                     <td className="px-4 py-3">
@@ -165,9 +177,9 @@ export default function DashboardPage() {
         </div>
 
         {/* Vehicle Status Horizontal Bars (1/3 width) */}
-        <div className="bg-[#151b2b] border border-white/5 rounded-xl overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-white/5">
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-widest">Vehicle Status</h2>
+        <div className="bg-white dark:bg-[#151b2b] border border-slate-200 dark:border-white/5 rounded-xl overflow-hidden flex flex-col shadow-sm">
+          <div className="p-4 border-b border-slate-200 dark:border-white/5">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-widest">Vehicle Status</h2>
           </div>
           <div className="p-6 flex-1 flex flex-col justify-center space-y-6">
             <StatusBar label="Available" count={vehicleStats.available} total={vehicleStats.total} color="bg-emerald-500" />

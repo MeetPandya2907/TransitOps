@@ -5,6 +5,8 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { supabase as supabaseClient } from '@/lib/supabase';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, subDays } from 'date-fns';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export default function FuelPage() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,6 +26,27 @@ export default function FuelPage() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const exportToPDF = () => {
+    if (!logs || logs.length === 0) return;
+    const doc = new jsPDF();
+    doc.text("Fuel & Expense Logs", 14, 15);
+    
+    const tableData = logs.map((log: any) => [
+      `${log.vehicles?.name_model || 'Unknown'} (${log.vehicles?.registration_number || 'N/A'})`,
+      log.liters,
+      `$${log.cost}`,
+      log.date
+    ]);
+
+    autoTable(doc, {
+      head: [['Vehicle', 'Liters Consumed', 'Cost', 'Date']],
+      body: tableData,
+      startY: 25,
+    });
+    
+    doc.save('fuel_logs.pdf');
   };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -141,32 +164,27 @@ export default function FuelPage() {
     { name: 'Refuel Events', stat: refuelEvents.toString(), icon: Fuel, color: 'text-violet-500', bg: 'bg-violet-500/10' },
   ];
 
-  // Prepare chart data (group by date)
-  const chartDataMap: Record<string, number> = {};
-  
-  // Initialize last 7 days with 0
-  for (let i = 6; i >= 0; i--) {
-    const d = subDays(new Date(), i);
-    chartDataMap[format(d, 'MMM dd')] = 0;
-  }
+  // Prepare chart data for the last 7 days to preserve chronological order
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const d = subDays(new Date(), 6 - i);
+    return {
+      name: format(d, 'MMM dd'),
+      key: format(d, 'yyyy-MM-dd'),
+      cost: 0
+    };
+  });
 
   logs.forEach((log: any) => {
     if (log.date) {
-        const dateKey = format(parseISO(log.date), 'MMM dd');
-        if (chartDataMap[dateKey] !== undefined) {
-            chartDataMap[dateKey] += Number(log.cost);
-        } else {
-            // For older dates outside 7 days
-            if (!chartDataMap[dateKey]) chartDataMap[dateKey] = 0;
-            chartDataMap[dateKey] += Number(log.cost);
-        }
+      // Find if this log's date falls within our last 7 days
+      const match = last7Days.find(d => d.key === log.date);
+      if (match) {
+        match.cost += Number(log.cost || 0);
+      }
     }
   });
 
-  const chartData = Object.keys(chartDataMap).map(key => ({
-    name: key,
-    cost: chartDataMap[key]
-  })).slice(-7); // take last 7 to avoid clutter
+  const chartData = last7Days.map(d => ({ name: d.name, cost: d.cost }));
 
   const filteredLogs = logs.filter((log: any) => {
     const searchString = `${log.vehicles?.registration_number} ${log.vehicles?.name_model}`.toLowerCase();
@@ -219,19 +237,19 @@ export default function FuelPage() {
             <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-              <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+              <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
               <Tooltip 
-                contentStyle={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)', borderRadius: '0.5rem', color: 'var(--foreground)' }}
-                itemStyle={{ color: 'var(--primary)' }}
+                contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '0.5rem', color: 'hsl(var(--foreground))' }}
+                itemStyle={{ color: 'hsl(var(--primary))' }}
                 formatter={(value: number) => [`$${value.toLocaleString()}`, 'Cost']}
               />
-              <Area type="monotone" dataKey="cost" stroke="var(--primary)" strokeWidth={2} fillOpacity={1} fill="url(#colorCost)" />
+              <Area type="monotone" dataKey="cost" stroke="hsl(var(--primary))" strokeWidth={2} fillOpacity={1} fill="url(#colorCost)" />
             </AreaChart>
           </ResponsiveContainer>
       </div>
@@ -251,9 +269,12 @@ export default function FuelPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 mt-3 sm:mt-0">
               <button onClick={exportToCSV} className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted transition-colors focus:outline-none">
                 Export CSV
+              </button>
+              <button onClick={exportToPDF} className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted transition-colors focus:outline-none">
+                Export PDF
               </button>
               <button className="inline-flex items-center justify-center rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-foreground shadow-sm hover:bg-muted transition-colors focus:outline-none">
                 <Filter className="mr-2 h-4 w-4 text-muted-foreground" />
@@ -309,7 +330,7 @@ export default function FuelPage() {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="glass-panel w-full max-w-md rounded-2xl shadow-2xl p-6 relative z-10 border border-white/20">
+          <div className="glass-panel w-full max-w-md rounded-2xl shadow-2xl p-6 relative z-10 border border-slate-200 dark:border-white/20 bg-white dark:bg-[#151b2b]">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 Log Fuel Entry
@@ -349,7 +370,7 @@ export default function FuelPage() {
                 </div>
 
                 {/* Liters and Cost */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Liters</label>
                     <input

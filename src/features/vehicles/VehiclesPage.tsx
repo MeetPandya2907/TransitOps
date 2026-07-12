@@ -313,7 +313,7 @@ export default function VehiclesPage() {
           </div>
 
           {/* Table view for desktop (hidden on mobile) */}
-          <div className="hidden md:block glass-panel rounded-2xl shadow-sm overflow-hidden border border-slate-200/60 dark:border-slate-800/40">
+          <div className="hidden md:block glass-panel rounded-2xl shadow-sm overflow-x-auto border border-slate-200/60 dark:border-slate-800/40">
             <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800/80">
               <thead className="bg-slate-50/70 dark:bg-slate-900/30">
                 <tr>
@@ -377,7 +377,7 @@ export default function VehiclesPage() {
       {isModalOpen && currentVehicle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsModalOpen(false)}></div>
-          <div className="glass-panel w-full max-w-lg rounded-2xl shadow-2xl p-6 relative z-10 border border-white/20">
+          <div className="glass-panel w-full max-w-lg rounded-2xl shadow-2xl p-6 relative z-10 border border-slate-200 dark:border-white/20 bg-white dark:bg-[#151b2b]">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 {currentVehicle.id ? 'Modify Vehicle Details' : 'Register New Fleet Vehicle'}
@@ -397,7 +397,7 @@ export default function VehiclesPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Name */}
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Model Name</label>

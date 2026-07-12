@@ -186,7 +186,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_trip_status
+CREATE TRIGGER trg_02_trip_status
 BEFORE UPDATE ON trips
 FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status)
 EXECUTE FUNCTION handle_trip_status_change();
@@ -243,8 +243,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_validate_trip ON trips;
-CREATE TRIGGER trg_validate_trip
+DROP TRIGGER IF EXISTS trg_01_validate_trip ON trips;
+CREATE TRIGGER trg_01_validate_trip
 BEFORE UPDATE ON trips
 FOR EACH ROW EXECUTE FUNCTION validate_trip_rules();
 
@@ -267,6 +267,19 @@ BEGIN
   -- If role exists, assign it
   IF role_id IS NOT NULL THEN
     INSERT INTO public.user_roles (user_id, role_id) VALUES (NEW.id, role_id);
+  END IF;
+
+  -- If the role is Driver, automatically create a placeholder record in drivers table
+  IF requested_role = 'Driver' THEN
+    INSERT INTO public.drivers (name, license_number, license_expiry_date, contact_number, status, user_id)
+    VALUES (
+      COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
+      'PENDING-' || SUBSTRING(NEW.id::text FROM 1 FOR 8),
+      CURRENT_DATE + INTERVAL '1 year',
+      'Pending',
+      'available',
+      NEW.id
+    );
   END IF;
 
   RETURN NEW;
