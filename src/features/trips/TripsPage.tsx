@@ -1,13 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import type { Trip, Vehicle, Driver, TripStatus } from '../types/database.types';
-import { useAuth } from '../context/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import { Plus, CheckCircle, XCircle, Play, Navigation, ArrowRight, X } from 'lucide-react';
 
-export const Trips: React.FC = () => {
-  const { role } = useAuth();
+type Trip = any;
+type Vehicle = any;
+type Driver = any;
+type TripStatus = string;
+
+export default function TripsPage() {
+  const { profile } = useAuthStore();
+  const role = profile?.roles?.[0] || 'Driver';
   const isDriver = role === 'Driver';
-  const isManager = role === 'Fleet Manager';
+  const isManager = role === 'FleetManager';
   const canModify = isManager || isDriver;
 
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -113,27 +118,27 @@ export const Trips: React.FC = () => {
     }
 
     // 1. Retired or In Shop vehicle check
-    if (selectedVehicle.status === 'Retired' || selectedVehicle.status === 'In Shop') {
-      setModalError(`Vehicle ${selectedVehicle.name} is in status "${selectedVehicle.status}" and cannot be scheduled.`);
+    if (selectedVehicle.status === 'retired' || selectedVehicle.status === 'in_shop') {
+      setModalError(`Vehicle ${selectedVehicle.name_model} is in status "${selectedVehicle.status}" and cannot be scheduled.`);
       setSaving(false);
       return;
     }
 
     // 2. Driver license validity and suspended check
     const isExpired = new Date(selectedDriver.license_expiry_date) < new Date();
-    if (selectedDriver.status === 'Suspended' || isExpired) {
+    if (selectedDriver.status === 'suspended' || isExpired) {
       setModalError(`Driver ${selectedDriver.name} has a Suspended status or an Expired driving license.`);
       setSaving(false);
       return;
     }
 
     // 3. Driver/Vehicle On Trip check
-    if (selectedVehicle.status === 'On Trip') {
-      setModalError(`Vehicle ${selectedVehicle.name} is already assigned to an active trip.`);
+    if (selectedVehicle.status === 'on_trip') {
+      setModalError(`Vehicle ${selectedVehicle.name_model} is already assigned to an active trip.`);
       setSaving(false);
       return;
     }
-    if (selectedDriver.status === 'On Trip') {
+    if (selectedDriver.status === 'on_trip') {
       setModalError(`Driver ${selectedDriver.name} is already assigned to an active trip.`);
       setSaving(false);
       return;
@@ -158,7 +163,7 @@ export const Trips: React.FC = () => {
           cargo_weight: Number(newTrip.cargo_weight),
           planned_distance: Number(newTrip.planned_distance),
           revenue: Number(newTrip.revenue),
-          status: 'Draft'
+          status: 'draft'
         }]);
 
       if (error) throw error;
@@ -177,41 +182,27 @@ export const Trips: React.FC = () => {
 
     if (!selectedVehicle || !selectedDriver) return;
 
-    if (selectedVehicle.status === 'On Trip' || selectedDriver.status === 'On Trip') {
+    if (selectedVehicle.status === 'on_trip' || selectedDriver.status === 'on_trip') {
       alert('Cannot dispatch: Vehicle or Driver is currently marked On Trip on another active delivery.');
       return;
     }
-    if (selectedVehicle.status === 'In Shop' || selectedVehicle.status === 'Retired') {
+    if (selectedVehicle.status === 'in_shop' || selectedVehicle.status === 'retired') {
       alert('Cannot dispatch: Vehicle is In Shop or Retired.');
       return;
     }
-    if (selectedDriver.status === 'Suspended') {
+    if (selectedDriver.status === 'suspended') {
       alert('Cannot dispatch: Driver is suspended.');
       return;
     }
 
     setLoading(true);
     try {
-      // Update vehicle status -> On Trip
-      const { error: vError } = await supabase
-        .from('vehicles')
-        .update({ status: 'On Trip' })
-        .eq('id', trip.vehicle_id);
-      if (vError) throw vError;
-
-      // Update driver status -> On Trip
-      const { error: dError } = await supabase
-        .from('drivers')
-        .update({ status: 'On Trip' })
-        .eq('id', trip.driver_id);
-      if (dError) throw dError;
-
-      // Update trip -> Dispatched
+      // The DB trigger handle_trip_status_change will update vehicles and drivers automatically
+      // Update trip -> dispatched
       const { error: tError } = await supabase
         .from('trips')
         .update({ 
-          status: 'Dispatched',
-          actual_odometer_start: selectedVehicle.odometer 
+          status: 'dispatched'
         })
         .eq('id', trip.id);
       if (tError) throw tError;
@@ -250,34 +241,18 @@ export const Trips: React.FC = () => {
     setModalError(null);
 
     try {
-      // 1. Update trip details (Completed, odometer, fuel, final revenue)
+      // 1. Update trip details (completed, final_odometer, fuel, final revenue)
+      // The DB trigger handle_trip_status_change will automatically update vehicles and drivers
       const { error: tError } = await supabase
         .from('trips')
         .update({
-          status: 'Completed',
-          actual_odometer_end: Number(completionData.actual_odometer_end),
+          status: 'completed',
+          final_odometer: Number(completionData.actual_odometer_end),
           fuel_consumed: Number(completionData.fuel_consumed),
           revenue: Number(completionData.revenue),
         })
         .eq('id', activeTripToComplete.id);
       if (tError) throw tError;
-
-      // 2. Update vehicle details (Available, update odometer)
-      const { error: vError } = await supabase
-        .from('vehicles')
-        .update({
-          status: 'Available',
-          odometer: Number(completionData.actual_odometer_end),
-        })
-        .eq('id', activeTripToComplete.vehicle_id);
-      if (vError) throw vError;
-
-      // 3. Update driver details (Available)
-      const { error: dError } = await supabase
-        .from('drivers')
-        .update({ status: 'Available' })
-        .eq('id', activeTripToComplete.driver_id);
-      if (dError) throw dError;
 
       // 4. Log fuel cost into Fuel Logs if fuel was logged
       if (Number(completionData.fuel_consumed) > 0) {
@@ -299,7 +274,7 @@ export const Trips: React.FC = () => {
             vehicle_id: activeTripToComplete.vehicle_id,
             trip_id: activeTripToComplete.id,
             type: 'Fuel',
-            cost: Number(completionData.fuel_cost),
+            amount: Number(completionData.fuel_cost),
             date: new Date().toISOString().split('T')[0],
             description: `Fuel consumption log for completed trip ${activeTripToComplete.source} to ${activeTripToComplete.destination}`
           }]);
@@ -322,23 +297,12 @@ export const Trips: React.FC = () => {
     try {
       // If trip was already dispatched, we need to release driver and vehicle
       if (trip.status === 'Dispatched') {
-        const { error: vError } = await supabase
-          .from('vehicles')
-          .update({ status: 'Available' })
-          .eq('id', trip.vehicle_id);
-        if (vError) throw vError;
-
-        const { error: dError } = await supabase
-          .from('drivers')
-          .update({ status: 'Available' })
-          .eq('id', trip.driver_id);
-        if (dError) throw dError;
-      }
-
-      // Update trip to Cancelled
+    try {
+      // The DB trigger handle_trip_status_change will update vehicles and drivers automatically
+      // Update trip to cancelled
       const { error: tError } = await supabase
         .from('trips')
-        .update({ status: 'Cancelled' })
+        .update({ status: 'cancelled' })
         .eq('id', trip.id);
       if (tError) throw tError;
 
@@ -351,25 +315,52 @@ export const Trips: React.FC = () => {
 
   const getTripStatusColor = (status: TripStatus) => {
     switch (status) {
-      case 'Draft':
+      case 'draft':
         return 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300';
-      case 'Dispatched':
+      case 'dispatched':
         return 'bg-blue-100 text-blue-850 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-200/50';
-      case 'Completed':
+      case 'completed':
         return 'bg-emerald-100 text-emerald-850 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200/50';
-      case 'Cancelled':
+      case 'cancelled':
         return 'bg-rose-100 text-rose-850 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-200/50';
       default:
         return 'bg-slate-100 text-slate-800';
     }
   };
 
+  const formatTripStatus = (status: string) => {
+    const map: Record<string, string> = {
+      'draft': 'Draft',
+      'dispatched': 'Dispatched',
+      'completed': 'Completed',
+      'cancelled': 'Cancelled',
+    };
+    };
+    return map[status] || status;
+  };
+
+  const exportToCSV = () => {
+    if (!trips || trips.length === 0) return;
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + ["Trip ID,Source,Destination,Vehicle,Driver,Status,Planned Distance,Final Odometer,Fuel Consumed,Revenue"].join(",") + "\n"
+      + trips.map((t: any) => 
+          `"${t.id}","${t.source}","${t.destination}","${t.vehicles?.name_model}","${t.drivers?.profiles?.full_name}","${t.status}",${t.planned_distance},${t.final_odometer || ''},${t.fuel_consumed || ''},${t.revenue || ''}`
+        ).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "trips.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Helper to find available vehicles for select form
-  const availableVehiclesForForm = vehicles.filter(v => v.status === 'Available');
+  const availableVehiclesForForm = vehicles.filter(v => v.status === 'available');
   // Helper to find available drivers for select form
   const availableDriversForForm = drivers.filter(d => {
     const isExpired = new Date(d.license_expiry_date) < new Date();
-    return d.status === 'Available' && !isExpired;
+    return d.status === 'available' && !isExpired;
   });
 
   return (
@@ -381,15 +372,23 @@ export const Trips: React.FC = () => {
           <h4 className="text-sm font-semibold text-slate-500">Fleet Operations</h4>
           <p className="text-xs text-slate-400 mt-0.5">Draft, dispatch, and close operational deliveries.</p>
         </div>
-        {canModify && (
+        <div className="flex gap-2">
           <button
-            onClick={handleOpenAddModal}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-brand-500/10 transition-all hover:scale-[1.02]"
+            onClick={exportToCSV}
+            className="flex items-center justify-center gap-2 px-4 py-2 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-900 transition-all"
           >
-            <Plus className="h-4 w-4" />
-            Plan Trip
+            Export CSV
           </button>
-        )}
+          {canModify && (
+            <button
+              onClick={handleOpenAddModal}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-brand-500/10 transition-all hover:scale-[1.02]"
+            >
+              <Plus className="h-4 w-4" />
+              Plan Trip
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Trips list */}
@@ -419,7 +418,7 @@ export const Trips: React.FC = () => {
                   <p className="text-xxs font-semibold text-slate-400">ID: {t.id.substring(0, 8)}</p>
                 </div>
                 <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xxs font-bold ${getTripStatusColor(t.status)}`}>
-                  {t.status}
+                  {formatTripStatus(t.status)}
                 </span>
               </div>
 
@@ -427,7 +426,7 @@ export const Trips: React.FC = () => {
               <div className="grid grid-cols-2 gap-4 text-xs border-y border-slate-100 dark:border-slate-800/60 py-3.5">
                 <div>
                   <span className="text-slate-400 font-medium block">Vehicle Assigned:</span>
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">{t.vehicles?.name || 'Unassigned'}</span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">{t.vehicles?.name_model || 'Unassigned'}</span>
                   <span className="text-xxs text-slate-400 block font-mono">Reg: {t.vehicles?.registration_number}</span>
                 </div>
                 <div>
@@ -448,11 +447,11 @@ export const Trips: React.FC = () => {
               </div>
 
               {/* Completion Odometer details if completed */}
-              {t.status === 'Completed' && (
+              {t.status === 'completed' && (
                 <div className="bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-100/50 dark:border-emerald-900/30 rounded-xl p-3 text-xxs flex justify-between gap-4 text-slate-600 dark:text-emerald-400/80 font-medium">
                   <div>
-                    <span className="text-slate-400">Odometer Run:</span>
-                    <p className="font-bold">{t.actual_odometer_start} km → {t.actual_odometer_end} km</p>
+                    <span className="text-slate-400">Final Odometer:</span>
+                    <p className="font-bold">{t.final_odometer} km</p>
                   </div>
                   <div>
                     <span className="text-slate-400">Fuel Logged:</span>
@@ -466,7 +465,7 @@ export const Trips: React.FC = () => {
               )}
 
               {/* Operational Action Buttons */}
-              {canModify && t.status !== 'Completed' && t.status !== 'Cancelled' && (
+              {canModify && t.status !== 'completed' && t.status !== 'cancelled' && (
                 <div className="flex justify-end gap-2.5 pt-1.5 border-t border-slate-100 dark:border-slate-800/40">
                   <button
                     onClick={() => handleCancelTrip(t)}
@@ -475,7 +474,7 @@ export const Trips: React.FC = () => {
                     <XCircle className="h-3.5 w-3.5" /> Cancel Trip
                   </button>
 
-                  {t.status === 'Draft' && (
+                  {t.status === 'draft' && (
                     <button
                       onClick={() => handleDispatchTrip(t)}
                       className="flex items-center gap-1.5 px-4.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-500/10 transition-colors"
@@ -484,7 +483,7 @@ export const Trips: React.FC = () => {
                     </button>
                   )}
 
-                  {t.status === 'Dispatched' && (
+                  {t.status === 'dispatched' && (
                     <button
                       onClick={() => handleOpenCompleteModal(t)}
                       className="flex items-center gap-1.5 px-4.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold shadow-md shadow-emerald-500/10 transition-colors"

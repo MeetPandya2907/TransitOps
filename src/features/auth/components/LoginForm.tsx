@@ -38,11 +38,10 @@ function AuthInput({ icon: Icon, error, rightElement, ...props }: any) {
         </div>
         <input
           {...props}
-          className={`w-full bg-[#0d1424] border rounded-xl pl-11 pr-10 py-3 text-sm text-white placeholder-slate-600 focus:outline-none transition-all ${
-            error
+          className={`w-full bg-[#0d1424] border rounded-xl pl-11 pr-10 py-3 text-sm text-white placeholder-slate-600 focus:outline-none transition-all ${error
               ? 'border-red-500/50 focus:border-red-500/70 focus:ring-1 focus:ring-red-500/20'
               : 'border-white/10 focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20'
-          }`}
+            }`}
         />
         {rightElement && (
           <div className="absolute inset-y-0 right-0 pr-3 flex items-center">{rightElement}</div>
@@ -140,11 +139,10 @@ function OtpInput({ value, onChange }: { value: string[]; onChange: (v: string[]
           onChange={e => handleChange(i, e.target.value)}
           onKeyDown={e => handleKeyDown(i, e)}
           onPaste={handlePaste}
-          className={`w-12 h-14 text-center text-xl font-bold rounded-xl border bg-[#0d1424] text-white transition-all outline-none focus:scale-105 ${
-            value[i]
+          className={`w-12 h-14 text-center text-xl font-bold rounded-xl border bg-[#0d1424] text-white transition-all outline-none focus:scale-105 ${value[i]
               ? 'border-indigo-500 bg-indigo-500/10 shadow-lg shadow-indigo-500/10'
               : 'border-white/10 focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20'
-          }`}
+            }`}
         />
       ))}
     </div>
@@ -522,9 +520,9 @@ export function LoginForm() {
             <div className="mt-10 grid grid-cols-2 gap-4">
               {[
                 { num: '99.9%', label: 'Uptime SLA' },
-                { num: '< 2s',  label: 'Avg. Response' },
-                { num: 'RBAC',  label: 'Role Security' },
-                { num: 'OTP',   label: 'Secure Auth' },
+                { num: '< 2s', label: 'Avg. Response' },
+                { num: 'RBAC', label: 'Role Security' },
+                { num: 'OTP', label: 'Secure Auth' },
               ].map(s => (
                 <div key={s.label} className="bg-white/[0.04] border border-white/[0.08] rounded-xl p-4">
                   <div className="text-xl font-black text-white">{s.num}</div>
@@ -547,11 +545,10 @@ export function LoginForm() {
                   <button
                     key={m}
                     onClick={() => setMode(m)}
-                    className={`flex-1 py-2.5 text-sm font-semibold rounded-xl transition-all ${
-                      mode === m
+                    className={`flex-1 py-2.5 text-sm font-semibold rounded-xl transition-all ${mode === m
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'
                         : 'text-slate-400 hover:text-white'
-                    }`}
+                      }`}
                   >
                     {m === 'login' ? 'Sign In' : 'Sign Up'}
                   </button>

@@ -53,6 +53,7 @@ CREATE TABLE drivers (
     contact_number VARCHAR(50),
     safety_score NUMERIC DEFAULT 100,
     status driver_status DEFAULT 'available',
+    user_id UUID UNIQUE REFERENCES profiles(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -94,7 +95,8 @@ CREATE TABLE maintenance_logs (
     description TEXT NOT NULL,
     cost NUMERIC DEFAULT 0,
     status maintenance_status DEFAULT 'pending',
-    date DATE NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -131,15 +133,32 @@ CREATE INDEX idx_maintenance_vehicle_id ON maintenance_logs(vehicle_id);
 -- RLS
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE drivers ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Public Read Profiles" ON profiles FOR SELECT USING (true);
 CREATE POLICY "Users Update Own Profile" ON profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Read Trips" ON trips FOR SELECT USING (true);
+
+-- Drivers RLS
+CREATE POLICY "Manage Drivers" ON drivers FOR ALL USING (
+  EXISTS (
+    SELECT 1 FROM user_roles ur 
+    JOIN roles r ON ur.role_id = r.id 
+    WHERE ur.user_id = auth.uid() AND r.name IN ('Fleet Manager', 'FleetManager', 'Dispatcher')
+  )
+);
+CREATE POLICY "Driver Read Own Data" ON drivers FOR SELECT USING (user_id = auth.uid());
+
+-- Trips RLS
 CREATE POLICY "Manage Trips" ON trips FOR ALL USING (
   EXISTS (
     SELECT 1 FROM user_roles ur 
     JOIN roles r ON ur.role_id = r.id 
-    WHERE ur.user_id = auth.uid() AND r.name IN ('FleetManager', 'Dispatcher')
+    WHERE ur.user_id = auth.uid() AND r.name IN ('Fleet Manager', 'FleetManager', 'Dispatcher')
+  )
+);
+CREATE POLICY "Driver Read Own Trips" ON trips FOR SELECT USING (
+  EXISTS (
+    SELECT 1 FROM drivers d WHERE d.id = trips.driver_id AND d.user_id = auth.uid()
   )
 );
 
@@ -155,6 +174,9 @@ BEGIN
         UPDATE vehicles SET status = 'available', odometer = NEW.final_odometer WHERE id = NEW.vehicle_id;
         UPDATE drivers SET status = 'available' WHERE id = NEW.driver_id;
         NEW.completed_at = NOW();
+    ELSIF NEW.status = 'cancelled' AND OLD.status = 'dispatched' THEN
+        UPDATE vehicles SET status = 'available' WHERE id = NEW.vehicle_id;
+        UPDATE drivers SET status = 'available' WHERE id = NEW.driver_id;
     END IF;
 
     INSERT INTO trip_history (trip_id, previous_status, new_status, changed_by)
@@ -168,6 +190,63 @@ CREATE TRIGGER trg_trip_status
 BEFORE UPDATE ON trips
 FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status)
 EXECUTE FUNCTION handle_trip_status_change();
+
+-- 2. MAINTENANCE LIFECYCLE TRIGGERS
+CREATE OR REPLACE FUNCTION handle_maintenance_status_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE vehicles SET status = 'in_shop' WHERE id = NEW.vehicle_id;
+    ELSIF TG_OP = 'UPDATE' AND NEW.end_date IS NOT NULL AND OLD.end_date IS NULL THEN
+        UPDATE vehicles SET status = 'available' WHERE id = NEW.vehicle_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_maintenance_status ON maintenance_logs;
+CREATE TRIGGER trg_maintenance_status
+AFTER INSERT OR UPDATE ON maintenance_logs
+FOR EACH ROW EXECUTE FUNCTION handle_maintenance_status_change();
+
+-- 3. PRE-DISPATCH VALIDATION TRIGGER
+CREATE OR REPLACE FUNCTION validate_trip_rules()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_max_capacity NUMERIC;
+    v_vehicle_status VARCHAR;
+    d_status VARCHAR;
+    d_license_expiry DATE;
+BEGIN
+    -- Check Vehicle
+    SELECT max_load_capacity, status INTO v_max_capacity, v_vehicle_status FROM vehicles WHERE id = NEW.vehicle_id;
+    IF NEW.cargo_weight > v_max_capacity THEN
+        RAISE EXCEPTION 'Cargo weight (%) exceeds vehicle maximum capacity (%)', NEW.cargo_weight, v_max_capacity;
+    END IF;
+    
+    -- When moving to Dispatched, strictly check Availability
+    IF NEW.status = 'dispatched' AND OLD.status = 'draft' THEN
+        IF v_vehicle_status != 'available' THEN
+            RAISE EXCEPTION 'Vehicle is not available for dispatch. Current status: %', v_vehicle_status;
+        END IF;
+
+        SELECT status, license_expiry_date INTO d_status, d_license_expiry FROM drivers WHERE id = NEW.driver_id;
+        IF d_status != 'available' THEN
+            RAISE EXCEPTION 'Driver is not available for dispatch. Current status: %', d_status;
+        END IF;
+        IF d_license_expiry < CURRENT_DATE THEN
+            RAISE EXCEPTION 'Driver license is expired.';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_validate_trip ON trips;
+CREATE TRIGGER trg_validate_trip
+BEFORE UPDATE ON trips
+FOR EACH ROW EXECUTE FUNCTION validate_trip_rules();
 
 -- Auto-create profile and assign role on signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -197,3 +276,36 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 CREATE OR REPLACE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Vehicle Analytics View
+CREATE OR REPLACE VIEW vehicle_analytics AS
+SELECT 
+    v.*,
+    COALESCE(t.total_revenue, 0) AS total_revenue,
+    COALESCE(m.total_maintenance_cost, 0) AS total_maintenance_cost,
+    COALESCE(f.total_fuel_cost, 0) AS total_fuel_cost,
+    (COALESCE(m.total_maintenance_cost, 0) + COALESCE(f.total_fuel_cost, 0)) AS operational_cost,
+    CASE 
+        WHEN v.acquisition_cost > 0 THEN 
+            (COALESCE(t.total_revenue, 0) - (COALESCE(m.total_maintenance_cost, 0) + COALESCE(f.total_fuel_cost, 0))) / v.acquisition_cost
+        ELSE 0 
+    END AS roi,
+    COALESCE(t.total_distance, 0) AS total_distance,
+    COALESCE(f.total_liters, 0) AS total_liters,
+    CASE 
+        WHEN COALESCE(f.total_liters, 0) > 0 THEN COALESCE(t.total_distance, 0) / f.total_liters
+        ELSE 0 
+    END AS fuel_efficiency
+FROM vehicles v
+LEFT JOIN (
+    SELECT vehicle_id, SUM(revenue) as total_revenue, SUM(planned_distance) as total_distance 
+    FROM trips WHERE status = 'completed' GROUP BY vehicle_id
+) t ON v.id = t.vehicle_id
+LEFT JOIN (
+    SELECT vehicle_id, SUM(cost) as total_maintenance_cost 
+    FROM maintenance_logs GROUP BY vehicle_id
+) m ON v.id = m.vehicle_id
+LEFT JOIN (
+    SELECT vehicle_id, SUM(cost) as total_fuel_cost, SUM(liters) as total_liters
+    FROM fuel_logs GROUP BY vehicle_id
+) f ON v.id = f.vehicle_id;

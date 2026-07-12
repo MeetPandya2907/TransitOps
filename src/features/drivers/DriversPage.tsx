@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import type { Driver, DriverStatus } from '../types/database.types';
-import { useAuth } from '../context/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { useAuthStore } from '@/store/authStore';
 import { Plus, Search, Edit2, Trash2, ShieldAlert, Award, X, Users } from 'lucide-react';
 
-export const Drivers: React.FC = () => {
-  const { role } = useAuth();
-  const isManager = role === 'Fleet Manager';
-  const isOfficer = role === 'Safety Officer';
+// Use basic partial type if Database type isn't fully updated yet, or just any
+type Driver = any;
+type DriverStatus = string;
+
+export default function DriversPage() {
+  const { profile } = useAuthStore();
+  const role = profile?.roles?.[0] || 'Driver';
+  const isManager = role === 'FleetManager';
+  const isOfficer = role === 'SafetyOfficer';
   const canModify = isManager || isOfficer;
 
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -49,10 +53,10 @@ export const Drivers: React.FC = () => {
       name: '',
       license_number: '',
       license_category: 'Class A CDL',
-      license_expiry_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 1 year from now
+      license_expiry_date: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
       contact_number: '',
       safety_score: 100,
-      status: 'Available',
+      status: 'available',
     });
     setModalError(null);
     setIsModalOpen(true);
@@ -109,7 +113,7 @@ export const Drivers: React.FC = () => {
             license_expiry_date: currentDriver.license_expiry_date,
             contact_number: currentDriver.contact_number,
             safety_score: Number(currentDriver.safety_score),
-            status: currentDriver.status as DriverStatus,
+            status: (currentDriver.status as DriverStatus).toLowerCase().replace(' ', '_'),
           })
           .eq('id', currentDriver.id);
 
@@ -126,7 +130,7 @@ export const Drivers: React.FC = () => {
               license_expiry_date: currentDriver.license_expiry_date,
               contact_number: currentDriver.contact_number,
               safety_score: Number(currentDriver.safety_score),
-              status: currentDriver.status as DriverStatus,
+              status: (currentDriver.status as DriverStatus).toLowerCase().replace(' ', '_'),
             },
           ]);
 
@@ -153,17 +157,27 @@ export const Drivers: React.FC = () => {
 
   const getStatusColor = (status: DriverStatus) => {
     switch (status) {
-      case 'Available':
+      case 'available':
         return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/40';
-      case 'On Trip':
+      case 'on_trip':
         return 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/40';
-      case 'Off Duty':
+      case 'off_duty':
         return 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-400 border border-slate-200 dark:border-slate-800';
-      case 'Suspended':
+      case 'suspended':
         return 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-400 border border-rose-200/50 dark:border-rose-800/40';
       default:
         return 'bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-400';
     }
+  };
+
+  const formatDriverStatus = (status: string) => {
+    const map: Record<string, string> = {
+      'available': 'Available',
+      'on_trip': 'On Trip',
+      'off_duty': 'Off Duty',
+      'suspended': 'Suspended',
+    };
+    return map[status] || status;
   };
 
   const getSafetyScoreColor = (score: number) => {
@@ -343,7 +357,7 @@ export const Drivers: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xxs font-semibold leading-5 ${getStatusColor(d.status)}`}>
-                          {d.status}
+                          {formatDriverStatus(d.status)}
                         </span>
                       </td>
                       {canModify && (
@@ -443,14 +457,14 @@ export const Drivers: React.FC = () => {
                 <div>
                   <label className="block text-xxs font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Status</label>
                   <select
-                    value={currentDriver.status || 'Available'}
+                    value={currentDriver.status || 'available'}
                     onChange={(e) => setCurrentDriver({ ...currentDriver, status: e.target.value as DriverStatus })}
                     className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500/20"
                   >
-                    <option value="Available">Available</option>
-                    <option value="On Trip">On Trip</option>
-                    <option value="Off Duty">Off Duty</option>
-                    <option value="Suspended">Suspended</option>
+                    <option value="available">Available</option>
+                    <option value="on_trip">On Trip</option>
+                    <option value="off_duty">Off Duty</option>
+                    <option value="suspended">Suspended</option>
                   </select>
                 </div>
 
