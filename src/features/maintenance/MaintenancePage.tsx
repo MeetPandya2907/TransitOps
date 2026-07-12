@@ -18,6 +18,7 @@ export default function MaintenancePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     vehicle_id: '',
@@ -109,26 +110,44 @@ export default function MaintenancePage() {
     return matchesSearch && log.status === statusFilter;
   });
 
-  const handleNewRequestSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.vehicle_id) return;
     
     setIsSubmitting(true);
     setSubmitError('');
     try {
-      const { error } = await supabaseClient
-        .from('maintenance_logs')
-        .insert([{
-          vehicle_id: formData.vehicle_id,
-          service_type: formData.service_type,
-          description: formData.description,
-          status: formData.status,
-          scheduled_date: new Date().toISOString().split('T')[0],
-          cost: formData.cost ? Number(formData.cost) : 0
-        }]);
-        
-      if (error) throw error;
+      if (editingLogId) {
+        const { error } = await supabaseClient
+          .from('maintenance_logs')
+          .update({
+            vehicle_id: formData.vehicle_id,
+            service_type: formData.service_type,
+            description: formData.description,
+            status: formData.status,
+            cost: formData.cost ? Number(formData.cost) : 0
+          })
+          .eq('id', editingLogId);
+          
+        if (error) throw error;
+      } else {
+        const { error } = await supabaseClient
+          .from('maintenance_logs')
+          .insert([{
+            vehicle_id: formData.vehicle_id,
+            service_type: formData.service_type,
+            description: formData.description,
+            status: formData.status,
+            scheduled_date: new Date().toISOString().split('T')[0],
+            cost: formData.cost ? Number(formData.cost) : 0
+          }]);
+          
+        if (error) throw error;
+      }
       
+      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+      
+      setEditingLogId(null);
       setFormData({ vehicle_id: '', service_type: 'Oil Change', description: '', status: 'Pending', cost: '' });
       setIsModalOpen(false);
     } catch (err: any) {
@@ -144,6 +163,39 @@ export default function MaintenancePage() {
     }
   };
 
+  const handleEditClick = (log: any) => {
+    setEditingLogId(log.id);
+    setFormData({
+      vehicle_id: log.vehicle_id || '',
+      service_type: log.service_type || 'Oil Change',
+      description: log.description || '',
+      status: log.status || 'Pending',
+      cost: log.cost ? log.cost.toString() : ''
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteClick = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this maintenance log?')) return;
+    try {
+      const { error } = await supabaseClient
+        .from('maintenance_logs')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+    } catch (err) {
+      console.error('Error deleting log:', err);
+      alert('Failed to delete the log. Please try again.');
+    }
+  };
+
+  const handleNewClick = () => {
+    setEditingLogId(null);
+    setFormData({ vehicle_id: '', service_type: 'Oil Change', description: '', status: 'Pending', cost: '' });
+    setIsModalOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -152,7 +204,7 @@ export default function MaintenancePage() {
         </div>
         <div className="flex items-center gap-3">
            <button 
-             onClick={() => setIsModalOpen(true)}
+             onClick={handleNewClick}
              className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-[#0b0e14]"
            >
              <Plus className="mr-2 h-4 w-4" />
@@ -262,7 +314,10 @@ export default function MaintenancePage() {
                         {log.cost ? `₹${log.cost.toLocaleString()}` : '-'}
                     </td>
                     <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                      <button className="text-blue-500 hover:text-blue-400">Edit<span className="sr-only">, {log.id}</span></button>
+                      <div className="flex items-center justify-end gap-3">
+                        <button onClick={() => handleEditClick(log)} className="text-blue-500 hover:text-blue-400 transition-colors">Edit</button>
+                        <button onClick={() => handleDeleteClick(log.id)} className="text-red-500 hover:text-red-400 transition-colors">Delete</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -282,8 +337,8 @@ export default function MaintenancePage() {
              >
                 <X className="w-5 h-5" />
              </button>
-             <h2 className="text-lg font-bold text-white mb-4">New Maintenance Request</h2>
-             <form onSubmit={handleNewRequestSubmit} className="space-y-4">
+             <h2 className="text-lg font-bold text-white mb-4">{editingLogId ? 'Edit Maintenance Log' : 'New Maintenance Request'}</h2>
+             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">Vehicle License Plate</label>
                   <select 
@@ -365,7 +420,7 @@ export default function MaintenancePage() {
                      disabled={isSubmitting}
                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2 transition-colors text-sm"
                    >
-                      {isSubmitting ? 'Submitting...' : 'Submit Request'}
+                      {isSubmitting ? 'Saving...' : (editingLogId ? 'Save Changes' : 'Submit Request')}
                    </button>
                 </div>
              </form>

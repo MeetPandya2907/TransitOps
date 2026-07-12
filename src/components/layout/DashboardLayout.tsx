@@ -2,45 +2,53 @@ import { useState } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { 
   Wrench, Fuel, Menu, X, LayoutDashboard, 
-  Map, Route, Users, Truck, Bell, Navigation, 
-  FileText, BarChart, TrendingUp, Droplets, 
-  Users2, Link2, Settings, ShieldCheck, 
-  RefreshCw 
+  Route, Users, Truck, 
+  BarChart, TrendingUp, Droplets, 
+  Settings, ShieldCheck, 
+  RefreshCw, LogOut 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const opsNav = [
-  { name: 'Live Tracking', href: '#', icon: Map },
-  { name: 'Trips', href: '#', icon: Route },
-  { name: 'Drivers', href: '#', icon: Users },
+  { name: 'Trips', href: '/trips', icon: Route },
+  { name: 'Drivers', href: '/drivers', icon: Users },
   { name: 'Vehicles', href: '/vehicles', icon: Truck },
 ];
 
 const mgmtNav = [
   { name: 'Maintenance', href: '/maintenance', icon: Wrench },
   { name: 'Fuel & Expenses', href: '/fuel', icon: Fuel },
-  { name: 'Alerts & Events', href: '#', icon: Bell },
-  { name: 'Geofences', href: '#', icon: Navigation },
-  { name: 'Documents', href: '#', icon: FileText },
 ];
 
 const analyticsNav = [
-  { name: 'Reports', href: '#', icon: BarChart },
-  { name: 'Performance', href: '#', icon: TrendingUp },
-  { name: 'Fuel Analytics', href: '#', icon: Droplets },
+  { name: 'Reports', href: '/reports', icon: BarChart },
+  { name: 'Performance', href: '/performance', icon: TrendingUp },
+  { name: 'Fuel Analytics', href: '/fuel-analytics', icon: Droplets },
 ];
 
 const systemNav = [
-  { name: 'Users & Roles', href: '#', icon: Users2 },
-  { name: 'Integrations', href: '#', icon: Link2 },
-  { name: 'Settings', href: '#', icon: Settings },
+  { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const { user, logout } = useAuth();
 
-  const renderNavGroup = (title: string, items: any[]) => (
+  const filterNav = (items: any[]) => {
+    if (!user) return items;
+    if (user.role === 'Fleet Manager') return items;
+    if (user.role === 'Driver') return items.filter(i => i.name === 'Trips');
+    if (user.role === 'Safety Officer') return items.filter(i => ['Drivers', 'Alerts & Events'].includes(i.name));
+    if (user.role === 'Financial Analyst') return items.filter(i => ['Fuel & Expenses', 'Reports'].includes(i.name));
+    return items;
+  };
+
+  const renderNavGroup = (title: string, items: any[]) => {
+    const filtered = filterNav(items);
+    if (filtered.length === 0) return null;
+    return (
     <div className="mb-6">
       <div className="text-[10px] font-bold text-slate-500 tracking-widest uppercase mb-2 px-6">{title}</div>
       <nav className="space-y-0.5 px-3">
@@ -70,7 +78,8 @@ export default function DashboardLayout() {
         })}
       </nav>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#0b0e14]">
@@ -151,6 +160,18 @@ export default function DashboardLayout() {
                 <div className="text-[9px] text-emerald-500 ml-6">Connected</div>
              </div>
           </div>
+          
+          {/* User Profile & Logout */}
+          <div className="p-4 border-t border-white/5 bg-[#11131a] flex items-center justify-between">
+             <div className="flex flex-col">
+                <span className="text-xs font-bold text-white truncate max-w-[140px]">{user?.email || 'User'}</span>
+                <span className="text-[10px] text-amber-500 font-semibold">{user?.role || 'Guest'}</span>
+             </div>
+             <button onClick={logout} className="p-2 bg-red-500/10 text-red-500 rounded hover:bg-red-500/20 transition-colors">
+                <LogOut className="w-4 h-4" />
+             </button>
+          </div>
+
         </div>
       </div>
 

@@ -1,16 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
-import { format, subDays, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { 
-  Search, Bell, Settings, Sun, User, 
+  Search, Sun, User,
   Truck, Activity, Fuel, Wrench, Users, DollarSign, 
-  MapPin, AlertTriangle, ShieldAlert, CheckCircle2,
-  Calendar, Plus, Car, UserPlus, Clock, FileDown, 
+  MapPin, ShieldAlert, CheckCircle2, FileDown,
+  Calendar, Car, UserPlus, Clock, 
   AlertOctagon, Server, Database, RefreshCw, Smartphone, CheckSquare
 } from 'lucide-react';
 import { 
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
+  XAxis, YAxis, CartesianGrid, ResponsiveContainer, 
   PieChart, Pie, Cell, LineChart, Line, ComposedChart, Bar
 } from 'recharts';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
@@ -75,20 +75,20 @@ export default function DashboardPage() {
   }, [supabaseClient, queryClient]);
 
   // Row 1 Metrics
-  const totalVehiclesCount = data?.vehicles?.length || 150;
-  const activeVehicles = data?.vehicles?.filter(v => v.status === 'Active').length || 138;
-  const utilization = Math.round((activeVehicles / totalVehiclesCount) * 100) || 92;
+  const totalVehiclesCount = data?.vehicles?.length || 0;
+  const activeVehicles = data?.vehicles?.filter(v => v.status === 'Active').length || 0;
+  const utilization = totalVehiclesCount > 0 ? Math.round((activeVehicles / totalVehiclesCount) * 100) : 0;
   
-  const totalFuelCost = data?.fuel?.reduce((sum, log) => sum + Number(log.cost || 0), 0) || 245900;
-  const totalFuelVolume = data?.fuel?.reduce((sum, log) => sum + Number(log.volume || 0), 0) || 12450;
+  const totalFuelCost = data?.fuel?.reduce((sum, log) => sum + Number(log.cost || 0), 0) || 0;
   
-  const maintDueCount = data?.vehicles?.filter(v => v.status === 'Maintenance').length || 18;
-  const criticalMaintCount = data?.maintenance?.filter(m => m.status === 'Critical').length || 6;
+  const maintDueCount = data?.vehicles?.filter(v => v.status === 'Maintenance').length || 0;
+  const criticalMaintCount = data?.maintenance?.filter(m => m.status === 'Critical').length || 0;
   
-  const activeDriversCount = data?.drivers?.filter(d => d.status === 'Active').length || 132;
+  const activeDriversCount = data?.drivers?.filter(d => d.status === 'Active').length || 0;
   
-  // Mock Revenue since it's not in the schema (generate dynamically based on trips)
-  const totalRevenue = (data?.trips?.length || 50) * 36800; // Mock calculation
+  // Dynamic Revenue based on trips
+  const activeDistanceMiles = data?.trips?.filter(t => t.status !== 'Cancelled').reduce((sum, t) => sum + (Number(t.distance_miles) || 0), 0) || 0;
+  const totalRevenue = Math.round(activeDistanceMiles * 1.609 * 80);
 
   // Row 2 Metrics - Fleet Health
   const healthScore = 96; 
@@ -98,78 +98,89 @@ export default function DashboardPage() {
   ];
 
   // Dynamic Alerts Generator
-  const dynamicAlerts = [
-     ...(data?.maintenance?.filter(m => m.status === 'Critical').slice(0,2).map(m => ({ icon: Wrench, color: 'text-red-500', bg: 'bg-red-500/10', title: 'Critical Maintenance', desc: `Vehicle ${m.vehicles?.license_plate || 'Unknown'} requires immediate service`, time: format(new Date(m.created_at || Date.now()), 'HH:mm') })) || []),
-     ...(data?.fuel?.filter(f => Number(f.cost) > 50000).slice(0,2).map(f => ({ icon: Fuel, color: 'text-amber-500', bg: 'bg-amber-500/10', title: 'High Fuel Expense', desc: `High fuel usage detected for ${f.vehicles?.license_plate || 'Unknown'}`, time: format(new Date(f.fuel_date || Date.now()), 'dd MMM') })) || []),
-     ...(data?.vehicles?.filter(v => v.status === 'Maintenance').slice(0,2).map(v => ({ icon: ShieldAlert, color: 'text-amber-500', bg: 'bg-amber-500/10', title: 'Vehicle Offline', desc: `Vehicle ${v.license_plate} is currently out of service`, time: 'Recent' })) || [])
-  ];
-  
-  // Fallback to static alerts if none found
-  const alerts = dynamicAlerts.length > 0 ? dynamicAlerts : [
-     { icon: AlertTriangle, color: 'text-red-500', bg: 'bg-red-500/10', title: 'Over Speed Alert', desc: 'Vehicle GJ05 AB 1234 exceeded speed limit', time: '2 min ago' },
-     { icon: ShieldAlert, color: 'text-amber-500', bg: 'bg-amber-500/10', title: 'Engine Temperature High', desc: 'Vehicle GJ12 XY 5678 temperature high', time: '10 min ago' },
-     { icon: FileDown, color: 'text-amber-500', bg: 'bg-amber-500/10', title: 'Insurance Expiring', desc: 'Vehicle GJ01 KL 9001 insurance expiring in 5 days', time: '30 min ago' },
-     { icon: Wrench, color: 'text-red-500', bg: 'bg-red-500/10', title: 'Maintenance Overdue', desc: 'Vehicle GJ05 MN 3456 maintenance overdue', time: '1 hour ago' },
-     { icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10', title: 'Trip Completed', desc: 'Trip Surat to Ahmedabad completed', time: '2 hours ago' }
+  const alerts = [
+     ...(data?.maintenance?.filter(m => m.status === 'Critical').map(m => ({ icon: Wrench, color: 'text-red-500', bg: 'bg-red-500/10', title: 'Critical Maintenance', desc: `Vehicle ${m.vehicles?.license_plate || 'Unknown'} requires immediate service`, time: format(new Date(m.created_at || Date.now()), 'HH:mm') })) || []),
+     ...(data?.fuel?.filter(f => Number(f.cost) > 5000).map(f => ({ icon: Fuel, color: 'text-amber-500', bg: 'bg-amber-500/10', title: 'High Fuel Expense', desc: `High fuel usage detected for ${f.vehicles?.license_plate || 'Unknown'}`, time: format(new Date(f.fuel_date || Date.now()), 'dd MMM') })) || []),
+     ...(data?.vehicles?.filter(v => v.status === 'Maintenance').map(v => ({ icon: ShieldAlert, color: 'text-amber-500', bg: 'bg-amber-500/10', title: 'Vehicle Offline', desc: `Vehicle ${v.license_plate} is currently out of service`, time: 'Recent' })) || [])
   ];
 
   // Row 3 - Vehicle Status Donut
-  const pieData = [
-    { name: 'Running', value: activeVehicles, perc: '92%' },
-    { name: 'Idle', value: 6, perc: '4%' },
-    { name: 'Maintenance', value: maintDueCount, perc: '2%' },
-    { name: 'Offline', value: 2, perc: '1%' },
-    { name: 'Out of Service', value: 1, perc: '1%' },
-    { name: 'Charging', value: 0, perc: '0%' },
-  ];
+  const idleCount = data?.vehicles?.filter(v => v.status === 'Inactive').length || 0;
+  const outOfServiceCount = data?.vehicles?.filter(v => v.status === 'Sold').length || 0;
 
-  // Charts Mock Data generator
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-  const revExpData = months.map(m => ({ name: m, revenue: 15+Math.random()*10, expenses: 8+Math.random()*5, profit: 5+Math.random()*4 }));
+  const pieData = [
+    { name: 'Running', value: activeVehicles, perc: totalVehiclesCount ? `${Math.round(activeVehicles/totalVehiclesCount*100)}%` : '0%' },
+    { name: 'Idle', value: idleCount, perc: totalVehiclesCount ? `${Math.round(idleCount/totalVehiclesCount*100)}%` : '0%' },
+    { name: 'Maintenance', value: maintDueCount, perc: totalVehiclesCount ? `${Math.round(maintDueCount/totalVehiclesCount*100)}%` : '0%' },
+    { name: 'Offline', value: outOfServiceCount, perc: totalVehiclesCount ? `${Math.round(outOfServiceCount/totalVehiclesCount*100)}%` : '0%' }
+  ].filter(d => d.value > 0);
+
+  // Dynamic Chart Generation Based on Real Data
+  const last6Months = Array.from({length: 6}).map((_, i) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - (5 - i));
+    return d;
+  });
+
+  const revExpData = last6Months.map(date => {
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const monthTrips = data?.trips?.filter(t => new Date(t.created_at).getMonth() === date.getMonth()) || [];
+    const monthRevenue = monthTrips.reduce((sum, t) => sum + Math.round((Number(t.distance_miles) || 0) * 1.609 * 80), 0);
+    const monthFuel = data?.fuel?.filter(f => new Date(f.fuel_date).getMonth() === date.getMonth()) || [];
+    const monthExpense = monthFuel.reduce((sum, f) => sum + (Number(f.cost) || 0), 0);
+    return { name: month, revenue: monthRevenue / 1000, expenses: monthExpense / 1000, profit: (monthRevenue - monthExpense) / 1000 };
+  });
   
-  const mayDays = ['1 May', '6 May', '11 May', '16 May', '21 May', '26 May'];
-  const fuelAnaData = mayDays.map(d => ({ name: d, fuelUsed: 500+Math.random()*500, fuelCost: 10000+Math.random()*15000 }));
+  const recentDays = Array.from({length: 6}).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (5 - i));
+    return d;
+  });
+
+  const fuelAnaData = recentDays.map(date => {
+    const day = date.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    const dayFuel = data?.fuel?.filter(f => new Date(f.fuel_date).getDate() === date.getDate()) || [];
+    const fuelUsed = dayFuel.reduce((sum, f) => sum + (Number(f.gallons) || 0), 0) * 3.785; // liters
+    const fuelCost = dayFuel.reduce((sum, f) => sum + (Number(f.cost) || 0), 0);
+    return { name: day, fuelUsed: Math.round(fuelUsed), fuelCost: Math.round(fuelCost) };
+  });
   
-  const maintTrendData = months.map(m => ({ name: m, upcoming: 15+Math.floor(Math.random()*15), completed: 20+Math.floor(Math.random()*10), overdue: 2+Math.floor(Math.random()*5) }));
+  const maintTrendData = last6Months.map(date => {
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const monthMaint = data?.maintenance?.filter(m => new Date(m.created_at).getMonth() === date.getMonth()) || [];
+    return { 
+      name: month, 
+      upcoming: monthMaint.filter(m => m.status === 'Pending').length, 
+      completed: monthMaint.filter(m => m.status === 'Completed').length, 
+      overdue: monthMaint.filter(m => m.status === 'Critical').length 
+    };
+  });
 
   // Row 4 - Tables (Dynamic Drivers)
-  const topDrivers = data?.drivers?.slice(0,5).map((d, index) => ({
-      rank: index + 1,
-      name: d.name || 'Unknown',
-      trips: 30 + Math.floor(Math.random()*40),
-      fuel: 80 + Math.floor(Math.random()*20),
-      safety: 85 + Math.floor(Math.random()*15),
-      rating: d.status === 'Active' ? (4.2 + Math.random()*0.7).toFixed(1) : '0.0'
-  })) || [];
-  
-  if (topDrivers.length === 0) {
-      topDrivers.push(
-         { rank: 1, name: 'Rahul Sharma', trips: 58, fuel: 96, safety: 94, rating: "4.9" },
-         { rank: 2, name: 'Vijay Patel', trips: 45, fuel: 92, safety: 91, rating: "4.7" },
-         { rank: 3, name: 'Amit Kumar', trips: 40, fuel: 90, safety: 88, rating: "4.6" },
-         { rank: 4, name: 'Suresh Yadav', trips: 38, fuel: 88, safety: 85, rating: "4.5" },
-         { rank: 5, name: 'Imran Khan', trips: 35, fuel: 85, safety: 82, rating: "4.3" }
-      );
-  }
+  const topDrivers = data?.drivers?.slice(0,5).map((d, index) => {
+      const driverTrips = data?.trips?.filter(t => t.driver_id === d.id) || [];
+      const driverFuel = data?.fuel?.filter(f => f.driver_id === d.id) || [];
+      return {
+        rank: index + 1,
+        name: d.first_name ? `${d.first_name} ${d.last_name}` : (d.name || 'Unknown Driver'),
+        trips: driverTrips.length,
+        fuel: Math.round(driverFuel.reduce((sum, f) => sum + Number(f.cost), 0) / 1000), // simplified score
+        safety: 90 + Math.floor(Math.random()*10), // mock safety as it's not in db
+        rating: d.status === 'Active' ? '4.8' : '4.2'
+      };
+  }).filter(d => d.name !== 'Unknown Driver') || [];
 
-  const recentTrips = data?.trips?.slice(0,5).map(t => ({
-      vehicle: t.vehicles?.license_plate || 'UNK',
-      driver: t.drivers?.name || 'Unassigned',
-      start: format(new Date(t.created_at || Date.now()), 'dd MMM, HH:mm'),
-      dest: t.destination || 'Unknown',
-      dist: `${t.distance || Math.floor(Math.random()*300+100)} km`,
-      status: t.status || 'Completed'
-  })) || [];
-  
-  if (recentTrips.length === 0) {
-      recentTrips.push(
-          { vehicle: 'GJ05 AB 1234', driver: 'Rahul Sharma', start: '28 May, 08:00', dest: 'Ahmedabad', dist: '265 km', status: 'Completed' },
-          { vehicle: 'GJ12 XY 5678', driver: 'Vijay Patel', start: '28 May, 07:30', dest: 'Vadodara', dist: '195 km', status: 'Completed' },
-          { vehicle: 'GJ01 KL 9001', driver: 'Amit Kumar', start: '28 May, 07:15', dest: 'Rajkot', dist: '320 km', status: 'In Progress' },
-          { vehicle: 'GJ05 MN 3456', driver: 'Suresh Yadav', start: '28 May, 06:45', dest: 'Bhavnagar', dist: '210 km', status: 'Completed' },
-          { vehicle: 'GJ05 PQ 6789', driver: 'Imran Khan', start: '28 May, 06:30', dest: 'Mumbai', dist: '402 km', status: 'In Progress' }
-      );
-  }
+  const recentTrips = data?.trips?.slice(0,5).map(t => {
+      const driverName = t.drivers ? (t.drivers.first_name ? `${t.drivers.first_name} ${t.drivers.last_name}` : t.drivers.name) : 'Unassigned';
+      return {
+        vehicle: t.vehicles?.license_plate || 'UNK',
+        driver: driverName || 'Unassigned',
+        start: format(new Date(t.created_at || Date.now()), 'dd MMM, HH:mm'),
+        dest: t.end_location || t.destination || 'Unknown',
+        dist: `${t.distance_miles ? Math.round(t.distance_miles * 1.609) : 0} km`,
+        status: t.status || 'Completed'
+      };
+  }) || [];
 
   return (
     <div className="flex flex-col min-h-screen text-slate-200 bg-[#0b0e14] p-4 lg:p-6 overflow-x-hidden font-sans">
@@ -189,23 +200,6 @@ export default function DashboardPage() {
                May 28, 2025 <Calendar className="w-3.5 h-3.5 ml-2 text-slate-500" />
             </div>
             <button className="p-1.5 text-slate-400 hover:text-white"><Sun className="w-4 h-4" /></button>
-            <div className="relative">
-              <button className="p-1.5 text-slate-400 hover:text-white"><Bell className="w-4 h-4" /></button>
-              <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-red-500 text-[8px] font-bold text-white rounded-full flex items-center justify-center transform translate-x-1 -translate-y-1">12</span>
-            </div>
-            <button className="p-1.5 text-slate-400 hover:text-white"><Settings className="w-4 h-4" /></button>
-            <div className="flex items-center gap-2 pl-2 border-l border-white/10 ml-1">
-               <div className="h-8 w-8 rounded-full bg-blue-600 flex items-center justify-center overflow-hidden">
-                  <User className="h-4 w-4 text-white" />
-               </div>
-               <div className="hidden lg:block leading-tight">
-                  <div className="text-[11px] font-semibold text-white">Admin</div>
-                  <div className="text-[9px] text-slate-500">Super Admin</div>
-               </div>
-            </div>
-            <button className="ml-2 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold px-3 py-2 rounded-lg flex items-center transition-colors">
-               <Plus className="w-3.5 h-3.5 mr-1" /> Quick Action
-            </button>
          </div>
       </div>
 
@@ -360,7 +354,7 @@ export default function DashboardPage() {
                    <ResponsiveContainer width="100%" height="100%">
                      <PieChart>
                        <Pie data={pieData} innerRadius={35} outerRadius={50} paddingAngle={2} dataKey="value" stroke="none">
-                         {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={DONUT_COLORS[index]} />)}
+                         {pieData.map((_entry, index) => <Cell key={`cell-${index}`} fill={DONUT_COLORS[index]} />)}
                        </Pie>
                      </PieChart>
                    </ResponsiveContainer>

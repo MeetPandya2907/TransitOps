@@ -1,18 +1,31 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Truck, Search, Plus, Filter, LayoutGrid, List,
-  MoreVertical, Clock, Wrench, CheckCircle2, AlertTriangle, Play
+  MoreVertical, Wrench, CheckCircle2, AlertTriangle, Play, X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format } from 'date-fns';
 
 export default function VehiclesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [statusFilter, setStatusFilter] = useState('All');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+  
+  const [formData, setFormData] = useState({
+    license_plate: '',
+    make: '',
+    model: '',
+    year: new Date().getFullYear().toString(),
+    vin: '',
+    current_mileage: '',
+    status: 'Active'
+  });
 
+  const queryClient = useQueryClient();
   const supabaseClient = createClient();
 
   const { data: vehicles = [], isLoading } = useQuery({
@@ -48,6 +61,46 @@ export default function VehiclesPage() {
     { id: '4', license_plate: 'GJ05 MN 3456', make: 'Volvo', model: 'FM', year: 2023, current_mileage: 12000, status: 'Out of Service' },
   ]);
 
+  const handleNewVehicleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setSubmitError('');
+    
+    try {
+      const { error } = await supabaseClient
+        .from('vehicles')
+        .insert([{
+          license_plate: formData.license_plate.toUpperCase(),
+          make: formData.make,
+          model: formData.model,
+          year: parseInt(formData.year),
+          vin: formData.vin.toUpperCase() || `VIN${Math.random().toString(36).substring(2, 12).toUpperCase()}`,
+          current_mileage: formData.current_mileage ? Number(formData.current_mileage) : 0,
+          status: formData.status
+        }]);
+        
+      if (error) throw error;
+      
+      queryClient.invalidateQueries({ queryKey: ['vehiclesListFull'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardData'] });
+      
+      setFormData({
+        license_plate: '', make: '', model: '', year: new Date().getFullYear().toString(), 
+        vin: '', current_mileage: '', status: 'Active'
+      });
+      setIsModalOpen(false);
+    } catch (err: any) {
+      console.error('Error adding vehicle:', err);
+      if (err.code === '23505') {
+         setSubmitError("A vehicle with this License Plate or VIN already exists.");
+      } else {
+         setSubmitError(err.message || 'Failed to add vehicle.');
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-[#0b0e14] text-slate-200 font-sans p-4 lg:p-6 overflow-hidden">
       
@@ -57,7 +110,10 @@ export default function VehiclesPage() {
            <h1 className="text-xl lg:text-2xl font-bold text-white tracking-tight">Fleet Management</h1>
            <p className="text-[11px] text-slate-400 mt-0.5">Manage and monitor your entire vehicle fleet</p>
          </div>
-         <button className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center transition-colors">
+         <button 
+           onClick={() => setIsModalOpen(true)}
+           className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-lg flex items-center transition-colors"
+         >
             <Plus className="w-4 h-4 mr-2" /> Add Vehicle
          </button>
       </div>
@@ -237,6 +293,78 @@ export default function VehiclesPage() {
                  ))}
               </tbody>
            </table>
+        </div>
+      )}
+
+      {/* New Vehicle Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0b0e14]/80 backdrop-blur-sm">
+          <div className="bg-[#151923] border border-white/10 rounded-xl shadow-2xl w-full max-w-lg p-6 relative">
+             <button 
+               onClick={() => setIsModalOpen(false)}
+               className="absolute top-4 right-4 text-slate-400 hover:text-white"
+             >
+                <X className="w-5 h-5" />
+             </button>
+             <h2 className="text-lg font-bold text-white mb-6">Register New Vehicle</h2>
+             <form onSubmit={handleNewVehicleSubmit} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                   <div>
+                     <label className="block text-xs font-medium text-slate-300 mb-1">License Plate</label>
+                     <input required type="text" value={formData.license_plate} onChange={e => setFormData({...formData, license_plate: e.target.value})} className="w-full bg-[#11131a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500 uppercase" placeholder="GJ05 AB 1234" />
+                   </div>
+                   <div>
+                     <label className="block text-xs font-medium text-slate-300 mb-1">VIN Number</label>
+                     <input type="text" value={formData.vin} onChange={e => setFormData({...formData, vin: e.target.value})} className="w-full bg-[#11131a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500 uppercase" placeholder="Optional (Auto-generated)" />
+                   </div>
+                   <div>
+                     <label className="block text-xs font-medium text-slate-300 mb-1">Make</label>
+                     <input required type="text" value={formData.make} onChange={e => setFormData({...formData, make: e.target.value})} className="w-full bg-[#11131a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500" placeholder="e.g. Tata" />
+                   </div>
+                   <div>
+                     <label className="block text-xs font-medium text-slate-300 mb-1">Model</label>
+                     <input required type="text" value={formData.model} onChange={e => setFormData({...formData, model: e.target.value})} className="w-full bg-[#11131a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500" placeholder="e.g. Prima" />
+                   </div>
+                   <div>
+                     <label className="block text-xs font-medium text-slate-300 mb-1">Year</label>
+                     <input required type="number" min="1990" max={new Date().getFullYear() + 1} value={formData.year} onChange={e => setFormData({...formData, year: e.target.value})} className="w-full bg-[#11131a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500" placeholder="2023" />
+                   </div>
+                   <div>
+                     <label className="block text-xs font-medium text-slate-300 mb-1">Initial Mileage (km)</label>
+                     <input type="number" min="0" value={formData.current_mileage} onChange={e => setFormData({...formData, current_mileage: e.target.value})} className="w-full bg-[#11131a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500" placeholder="0" />
+                   </div>
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Initial Status</label>
+                  <select 
+                    value={formData.status}
+                    onChange={(e) => setFormData({...formData, status: e.target.value})}
+                    className="w-full bg-[#11131a] border border-white/10 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-blue-500"
+                  >
+                     <option value="Active">Active</option>
+                     <option value="Maintenance">Maintenance</option>
+                     <option value="Out of Service">Out of Service</option>
+                  </select>
+                </div>
+                
+                {submitError && (
+                   <div className="bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] p-2 rounded flex items-center gap-2">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {submitError}
+                   </div>
+                )}
+                
+                <div className="pt-4">
+                   <button 
+                     type="submit" 
+                     disabled={isSubmitting}
+                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 transition-colors text-sm"
+                   >
+                      {isSubmitting ? 'Registering...' : 'Register Vehicle'}
+                   </button>
+                </div>
+             </form>
+          </div>
         </div>
       )}
 
