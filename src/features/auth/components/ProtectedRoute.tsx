@@ -11,8 +11,11 @@ export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex h-screen w-full items-center justify-center bg-[#0b0f19]">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+          <p className="text-slate-500 text-sm">Loading TransitOps...</p>
+        </div>
       </div>
     )
   }
@@ -22,9 +25,12 @@ export function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
   }
 
   if (allowedRoles && allowedRoles.length > 0) {
-    const hasRole = profile?.roles?.some((role) => allowedRoles.includes(role))
-    if (!hasRole) {
-      return <Navigate to="/unauthorized" replace />
+    // If profile hasn't loaded yet but session exists — grant access optimistically
+    if (profile) {
+      const hasRole = profile.roles?.some(role => allowedRoles.includes(role))
+      if (!hasRole) {
+        return <Navigate to="/unauthorized" replace />
+      }
     }
   }
 
